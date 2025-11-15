@@ -44,7 +44,13 @@ DrawPyramid :: proc(rect: rl.Rectangle, p: Piece) {
 
   corners := [4][2]f32 { tl, bl, br, tr }
 
-  current := p.rotation
+  // Do a little transformation to ensure that 0-rotation corresponds to what we expect
+  // and also ensure that positive rotation direction == clockwise.
+  r := p.rotation * -1
+  if r < 0 do r += 4
+
+  current := (r + 1) % 4
+
   next_clock, next_anti_clock := current - 1, (current + 1) % 4
   if next_clock < 0 do next_clock = next_clock + 4
 
@@ -71,7 +77,13 @@ DrawScarab :: proc(rect: rl.Rectangle, p: Piece) {
 
   corners := [4][2]f32 { tl, bl, br, tr }
 
-  current := p.rotation
+  // Do a little transformation to ensure that 0-rotation corresponds to what we expect
+  // and also ensure that positive rotation direction == clockwise.
+  r := p.rotation * -1
+  if r < 0 do r += 4
+
+  current := (r + 1) % 4
+
   next_clock, next_anti_clock := current - 1, (current + 1) % 4
   if next_clock < 0 do next_clock = next_clock + 4
 
@@ -129,7 +141,11 @@ DrawAnubis :: proc(rect: rl.Rectangle, p: Piece) {
     inner_corners2[i] = c + 0.5 * (corners[i] - c)
   }
 
-  current := p.rotation
+  // Do a little transformation to ensure that 0-rotation corresponds to what we expect
+  // and also ensure that positive rotation direction == clockwise.
+  current := p.rotation * -1
+  if current  < 0 do current += 4
+
   next_clock, next_anti_clock := current - 1, (current + 1) % 4
   if next_clock < 0 do next_clock = next_clock + 4
 
@@ -227,7 +243,11 @@ DrawSphinx :: proc(rect: rl.Rectangle, p: Piece) {
   rl.DrawRectangle(cast(i32)inner_tl[0], cast(i32)inner_tl[1], cast(i32)(0.6 * rect.width), cast(i32)(0.6 * rect.height), rl.BLACK);
 
   // Draw the laser "gun".
-  current := p.rotation
+  // Do a little transformation to ensure that 0-rotation corresponds to what we expect
+  // and also ensure that positive rotation direction == clockwise.
+  current := (p.rotation * -1) - 1
+  if current  < 0 do current += 4
+
   next_clock, next_anti_clock := current - 1, (current + 1) % 4
   if next_clock < 0 do next_clock = next_clock + 4
 
@@ -344,7 +364,6 @@ InitialKhetBoard :: proc() -> Board {
   for line, row_index in lines {
     col_index, i := 0, 0
     for i < len(line) {
-      fmt.println(row_index, col_index)
       c := cast(rune)line[i]
       if unicode.is_alpha(c) {
         player := unicode.is_upper(c) ? Player.SILVER : Player.RED
@@ -387,7 +406,7 @@ main :: proc() {
     
     rl.ClearBackground(rl.BLACK)
 
-    RenderBoard(board, rl.Rectangle{50, 50, 600, 500})
+    RenderBoard(board, rl.Rectangle{50, 50, WIDTH - 100, HEIGHT - 100})
 
     if rl.IsKeyPressed(rl.KeyboardKey.RIGHT) {
       rotation_state = (rotation_state + 1) % 4
