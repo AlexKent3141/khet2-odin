@@ -281,7 +281,8 @@ Square :: distinct Maybe(Piece)
 
 Board :: struct {
   player_to_move: Player,
-  squares: [8][10]Square
+  squares: [8][10]Square,
+  rects: [8][10]rl.Rectangle
 }
 
 RenderBoard :: proc(board: Board, rect: rl.Rectangle) {
@@ -292,16 +293,10 @@ RenderBoard :: proc(board: Board, rect: rl.Rectangle) {
 
   // Draw the pieces.
   for row in 0..<8 {
-    row_offset := side * row
     for col in 0..<10 {
-      col_offset := side * col
-
       sq := board.squares[row][col]
       if sq != nil {
-        r := rl.Rectangle{
-          x = rect.x + cast(f32)col_offset, y = rect.y + cast(f32)row_offset,
-          width = cast(f32)side, height = cast(f32)side}
-
+        r := board.rects[row][col]
         pt := sq.?.type
 
         switch pt {
@@ -333,7 +328,7 @@ RenderBoard :: proc(board: Board, rect: rl.Rectangle) {
   }
 }
 
-InitialKhetBoard :: proc() -> Board {
+InitialKhetBoard :: proc(rect: rl.Rectangle) -> Board {
 
   BOARD_STR ::
     "x33a3ka3p22/2p37/3P46/p11P31s1s21p21P4/p21P41S2S11p11P3/6p23/7P12/2P4A1KA13X1 0"
@@ -386,18 +381,36 @@ InitialKhetBoard :: proc() -> Board {
     }
   }
 
+  // Figure out the size of each square.
+  side := cast(int)math.min(rect.width / 10, rect.height / 8)
+
+  for row in 0..<8 {
+    row_offset := side * row
+    for col in 0..<10 {
+      col_offset := side * col
+
+      board.rects[row][col] = rl.Rectangle{
+          x = rect.x + cast(f32)col_offset,
+          y = rect.y + cast(f32)row_offset,
+          width = cast(f32)side,
+          height = cast(f32)side}
+    }
+  }
+
   return board
 }
 
 main :: proc() {
-  rl.InitWindow(WIDTH, HEIGHT, "Matrix")
+  rl.InitWindow(WIDTH, HEIGHT, "Khet")
   defer rl.CloseWindow()
   
   rl.SetTargetFPS(60)
 
   rotation_state := 0
 
-  board := InitialKhetBoard()
+  board_rect := rl.Rectangle{50, 50, WIDTH - 100, HEIGHT - 100}
+
+  board := InitialKhetBoard(board_rect)
   
   for !rl.WindowShouldClose() {
     elapsed := rl.GetFrameTime()
@@ -406,7 +419,7 @@ main :: proc() {
     
     rl.ClearBackground(rl.BLACK)
 
-    RenderBoard(board, rl.Rectangle{50, 50, WIDTH - 100, HEIGHT - 100})
+    RenderBoard(board, board_rect)
 
     if rl.IsKeyPressed(rl.KeyboardKey.RIGHT) {
       rotation_state = (rotation_state + 1) % 4
