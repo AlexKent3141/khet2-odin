@@ -282,7 +282,36 @@ Square :: distinct Maybe(Piece)
 Board :: struct {
   player_to_move: Player,
   squares: [8][10]Square,
-  rects: [8][10]rl.Rectangle
+
+  rects: [8][10]rl.Rectangle,
+  selected: Maybe([2]int)
+}
+
+UpdatePick :: proc(board: ^Board, click_pos: [2]f32) {
+  fmt.println(click_pos)
+
+  hit_test :: proc(x, y: f32, rect: rl.Rectangle) -> bool {
+    return x > rect.x && x < rect.x + rect.width &&
+           y > rect.y && y < rect.y + rect.height
+  }
+
+  has_selection := false
+  for row in 0..<8 {
+    for col in 0..<10 {
+      sq := board^.squares[row][col]
+      if sq != nil &&
+         sq.?.owner == board^.player_to_move &&
+         hit_test(click_pos[0], click_pos[1], board^.rects[row][col]) {
+
+        board^.selected = [2]int { row, col }
+        has_selection = true
+      }
+    }
+  }
+
+  if !has_selection {
+    board^.selected = nil
+  }
 }
 
 RenderBoard :: proc(board: Board, rect: rl.Rectangle) {
@@ -325,6 +354,14 @@ RenderBoard :: proc(board: Board, rect: rl.Rectangle) {
       cast(i32)rect.x + cast(i32)col_offset, cast(i32)rect.y,
       cast(i32)rect.x + cast(i32)col_offset, cast(i32)rect.y + 8 * cast(i32)side,
       rl.GREEN)
+  }
+
+  // Draw the move pick.
+  pick_maybe := board.selected
+  if pick_maybe != nil {
+    pick: [2]int = pick_maybe.?
+    rect := board.rects[pick[0]][pick[1]]
+    rl.DrawRectangleLinesEx(rect, 4, rl.BLUE)
   }
 }
 
@@ -397,6 +434,8 @@ InitialKhetBoard :: proc(rect: rl.Rectangle) -> Board {
     }
   }
 
+  board.selected = nil
+
   return board
 }
 
@@ -405,8 +444,6 @@ main :: proc() {
   defer rl.CloseWindow()
   
   rl.SetTargetFPS(60)
-
-  rotation_state := 0
 
   board_rect := rl.Rectangle{50, 50, WIDTH - 100, HEIGHT - 100}
 
@@ -421,15 +458,10 @@ main :: proc() {
 
     RenderBoard(board, board_rect)
 
-    if rl.IsKeyPressed(rl.KeyboardKey.RIGHT) {
-      rotation_state = (rotation_state + 1) % 4
+    if rl.IsMouseButtonPressed(rl.MouseButton.LEFT) {
+      UpdatePick(&board, rl.GetMousePosition())
     }
 
-    if rl.IsKeyPressed(rl.KeyboardKey.LEFT) {
-      rotation_state = rotation_state - 1
-      if rotation_state < 0 do rotation_state = rotation_state + 4
-    }
-    
     rl.EndDrawing()
   }
 }
