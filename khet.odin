@@ -1,5 +1,6 @@
 package main
 
+import "core:c"
 import "core:fmt"
 import "core:math"
 import "core:math/rand"
@@ -8,6 +9,12 @@ import "core:strings"
 import "core:unicode"
 
 import rl "vendor:raylib"
+import mu "vendor:microui"
+
+mu_ctx: mu.Context
+atlas_texture: rl.RenderTexture2D
+screen_texture: rl.RenderTexture2D
+bg: mu.Color
 
 WIDTH  :: 1280
 HEIGHT :: 800
@@ -21,6 +28,12 @@ DARK_RED :: rl.Color { 100, 0, 0, 255 }
 
 LIGHT_SILVER :: rl.Color { 200, 200, 200, 255 }
 DARK_SILVER :: rl.Color { 100, 100, 100, 255 }
+
+mouse_buttons_map := [mu.Mouse]rl.MouseButton{
+  .LEFT    = .LEFT,
+  .RIGHT   = .RIGHT,
+  .MIDDLE  = .MIDDLE,
+}
 
 Corners :: proc(rect: rl.Rectangle) -> ([2]f32, [2]f32, [2]f32, [2]f32) {
   tl := [2]f32 { rect.x, rect.y }
@@ -439,15 +452,142 @@ InitialKhetBoard :: proc(rect: rl.Rectangle) -> Board {
   return board
 }
 
+RenderUI :: proc(ctx: ^mu.Context) {
+  render_texture :: proc "contextless" (renderer: rl.RenderTexture2D, dst: ^rl.Rectangle, src: mu.Rect, color: rl.Color) {
+    dst.width = f32(src.w)
+    dst.height = f32(src.h)
+
+    rl.DrawTextureRec(
+      texture  = atlas_texture.texture,
+      source   = {f32(src.x), f32(src.y), f32(src.w), f32(src.h)},
+      position = {dst.x, dst.y},
+      tint     = color,
+    )
+  }
+
+  to_rl_color :: proc "contextless" (in_color: mu.Color) -> (out_color: rl.Color) {
+    return {in_color.r, in_color.g, in_color.b, in_color.a}
+  }
+
+  height := rl.GetScreenHeight()
+
+  rl.BeginTextureMode(screen_texture)
+  rl.EndScissorMode()
+  rl.ClearBackground(to_rl_color(bg))
+
+  command_backing: ^mu.Command
+  for variant in mu.next_command_iterator(ctx, &command_backing) {
+    switch cmd in variant {
+    case ^mu.Command_Text:
+      dst := rl.Rectangle{f32(cmd.pos.x), f32(cmd.pos.y), 0, 0}
+      for ch in cmd.str {
+        if ch&0xc0 != 0x80 {
+          r := min(int(ch), 127)
+          src := mu.default_atlas[mu.DEFAULT_ATLAS_FONT + r]
+          render_texture(screen_texture, &dst, src, to_rl_color(cmd.color))
+          dst.x += dst.width
+        }
+      }
+    case ^mu.Command_Rect:
+      rl.DrawRectangle(cmd.rect.x, cmd.rect.y, cmd.rect.w, cmd.rect.h, to_rl_color(cmd.color))
+    case ^mu.Command_Icon:
+      src := mu.default_atlas[cmd.id]
+      x := cmd.rect.x + (cmd.rect.w - src.w)/2
+      y := cmd.rect.y + (cmd.rect.h - src.h)/2
+      render_texture(screen_texture, &rl.Rectangle {f32(x), f32(y), 0, 0}, src, to_rl_color(cmd.color))
+    case ^mu.Command_Clip:
+      rl.BeginScissorMode(cmd.rect.x, height - (cmd.rect.y + cmd.rect.h), cmd.rect.w, cmd.rect.h)
+    case ^mu.Command_Jump:
+      unreachable()
+    }
+  }
+  rl.EndTextureMode()
+  rl.DrawTextureRec(
+    texture  = screen_texture.texture,
+    source   = {0, 0, f32(WIDTH), -f32(HEIGHT)},
+    position = {0, 0},
+    tint     = rl.WHITE,
+  )
+}
+
+write_log :: proc(s: string) {
+  fmt.println(s)
+}
+
+UpdateUI :: proc(ctx: ^mu.Context) {
+  @static opts := mu.Options{.NO_CLOSE}
+
+  if mu.window(ctx, "Controls", {0, 0, 300, 450}, opts) {
+
+    {
+      mu.layout_row_items(ctx, 3, 0)
+      if .SUBMIT in mu.button(ctx, "UL") { write_log("Pressed UL") }
+      if .SUBMIT in mu.button(ctx, "U") { write_log("Pressed U") }
+      if .SUBMIT in mu.button(ctx, "UR") { write_log("Pressed UR") }
+    }
+
+    {
+      mu.layout_row_items(ctx, 3, 0)
+      if .SUBMIT in mu.button(ctx, "L") { write_log("Pressed L") }
+      mu.label(ctx, "")
+      if .SUBMIT in mu.button(ctx, "R") { write_log("Pressed R") }
+    }
+
+    {
+      mu.layout_row_items(ctx, 3, 0)
+      if .SUBMIT in mu.button(ctx, "DL") { write_log("Pressed DL") }
+      if .SUBMIT in mu.button(ctx, "D") { write_log("Pressed D") }
+      if .SUBMIT in mu.button(ctx, "DR") { write_log("Pressed DR") }
+    }
+
+    {
+      mu.layout_row_items(ctx, 1, 0)
+      mu.label(ctx, "")
+    }
+
+    {
+      mu.layout_row_items(ctx, 3, 0)
+      if .SUBMIT in mu.button(ctx, "Rotate CW") { write_log("Pressed CW") }
+      mu.label(ctx, "")
+      if .SUBMIT in mu.button(ctx, "Rotate ACW") { write_log("Pressed ACW") }
+    }
+  }
+}
+
 main :: proc() {
   rl.InitWindow(WIDTH, HEIGHT, "Khet")
   defer rl.CloseWindow()
+
+  mu.init(&mu_ctx)
+
+  mu_ctx.text_width = mu.default_atlas_text_width
+  mu_ctx.text_height = mu.default_atlas_text_height
   
   rl.SetTargetFPS(60)
 
   board_rect := rl.Rectangle{50, 50, WIDTH - 100, HEIGHT - 100}
 
   board := InitialKhetBoard(board_rect)
+
+  atlas_texture = rl.LoadRenderTexture(c.int(mu.DEFAULT_ATLAS_WIDTH), c.int(mu.DEFAULT_ATLAS_HEIGHT))
+  defer rl.UnloadRenderTexture(atlas_texture)
+
+  image := rl.GenImageColor(c.int(mu.DEFAULT_ATLAS_WIDTH), c.int(mu.DEFAULT_ATLAS_HEIGHT), rl.Color{0, 0, 0, 0})
+  defer rl.UnloadImage(image)
+
+  for alpha, i in mu.default_atlas_alpha {
+    x := i % mu.DEFAULT_ATLAS_WIDTH
+    y := i / mu.DEFAULT_ATLAS_WIDTH
+    color := rl.Color{255, 255, 255, alpha}
+    rl.ImageDrawPixel(&image, c.int(x), c.int(y), color)
+  }
+
+  rl.BeginTextureMode(atlas_texture)
+  rl.UpdateTexture(atlas_texture.texture, rl.LoadImageColors(image))
+  rl.EndTextureMode()
+
+  screen_texture = rl.LoadRenderTexture(WIDTH, HEIGHT)
+  defer rl.UnloadRenderTexture(screen_texture)
   
   for !rl.WindowShouldClose() {
     elapsed := rl.GetFrameTime()
@@ -461,6 +601,27 @@ main :: proc() {
     if rl.IsMouseButtonPressed(rl.MouseButton.LEFT) {
       UpdatePick(&board, rl.GetMousePosition())
     }
+
+    free_all(context.temp_allocator)
+
+    mouse_pos := rl.GetMousePosition()
+    mouse_x, mouse_y := i32(mouse_pos.x), i32(mouse_pos.y)
+    mu.input_mouse_move(&mu_ctx, mouse_x, mouse_y)
+
+    for button_rl, button_mu in mouse_buttons_map {
+      switch {
+      case rl.IsMouseButtonPressed(button_rl):
+        mu.input_mouse_down(&mu_ctx, mouse_x, mouse_y, button_mu)
+      case rl.IsMouseButtonReleased(button_rl):
+        mu.input_mouse_up(&mu_ctx, mouse_x, mouse_y, button_mu)
+      }
+    }
+
+    mu.begin(&mu_ctx)
+    UpdateUI(&mu_ctx)
+    mu.end(&mu_ctx)
+
+    RenderUI(&mu_ctx)
 
     rl.EndDrawing()
   }
