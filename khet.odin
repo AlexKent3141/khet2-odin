@@ -11,10 +11,14 @@ import "core:unicode"
 import rl "vendor:raylib"
 import mu "vendor:microui"
 
-mu_ctx: mu.Context
-atlas_texture: rl.RenderTexture2D
-screen_texture: rl.RenderTexture2D
-bg: mu.Color
+ui_state := struct {
+    mu_ctx: mu.Context,
+    atlas_texture: rl.RenderTexture2D,
+    screen_texture: rl.RenderTexture2D,
+    bg: rl.Color
+}{
+    bg = rl.Color{0, 0, 0, 0}
+}
 
 WIDTH  :: 1280
 HEIGHT :: 800
@@ -458,7 +462,7 @@ RenderUI :: proc(ctx: ^mu.Context) {
     dst.height = f32(src.h)
 
     rl.DrawTextureRec(
-      texture  = atlas_texture.texture,
+      texture  = ui_state.atlas_texture.texture,
       source   = {f32(src.x), f32(src.y), f32(src.w), f32(src.h)},
       position = {dst.x, dst.y},
       tint     = color,
@@ -471,9 +475,9 @@ RenderUI :: proc(ctx: ^mu.Context) {
 
   height := rl.GetScreenHeight()
 
-  rl.BeginTextureMode(screen_texture)
+  rl.BeginTextureMode(ui_state.screen_texture)
   rl.EndScissorMode()
-  rl.ClearBackground(to_rl_color(bg))
+  rl.ClearBackground(ui_state.bg)
 
   command_backing: ^mu.Command
   for variant in mu.next_command_iterator(ctx, &command_backing) {
@@ -484,7 +488,7 @@ RenderUI :: proc(ctx: ^mu.Context) {
         if ch&0xc0 != 0x80 {
           r := min(int(ch), 127)
           src := mu.default_atlas[mu.DEFAULT_ATLAS_FONT + r]
-          render_texture(screen_texture, &dst, src, to_rl_color(cmd.color))
+          render_texture(ui_state.screen_texture, &dst, src, to_rl_color(cmd.color))
           dst.x += dst.width
         }
       }
@@ -494,7 +498,7 @@ RenderUI :: proc(ctx: ^mu.Context) {
       src := mu.default_atlas[cmd.id]
       x := cmd.rect.x + (cmd.rect.w - src.w)/2
       y := cmd.rect.y + (cmd.rect.h - src.h)/2
-      render_texture(screen_texture, &rl.Rectangle {f32(x), f32(y), 0, 0}, src, to_rl_color(cmd.color))
+      render_texture(ui_state.screen_texture, &rl.Rectangle {f32(x), f32(y), 0, 0}, src, to_rl_color(cmd.color))
     case ^mu.Command_Clip:
       rl.BeginScissorMode(cmd.rect.x, height - (cmd.rect.y + cmd.rect.h), cmd.rect.w, cmd.rect.h)
     case ^mu.Command_Jump:
@@ -503,7 +507,7 @@ RenderUI :: proc(ctx: ^mu.Context) {
   }
   rl.EndTextureMode()
   rl.DrawTextureRec(
-    texture  = screen_texture.texture,
+    texture  = ui_state.screen_texture.texture,
     source   = {0, 0, f32(WIDTH), -f32(HEIGHT)},
     position = {0, 0},
     tint     = rl.WHITE,
@@ -558,10 +562,10 @@ main :: proc() {
   rl.InitWindow(WIDTH, HEIGHT, "Khet")
   defer rl.CloseWindow()
 
-  mu.init(&mu_ctx)
+  mu.init(&ui_state.mu_ctx)
 
-  mu_ctx.text_width = mu.default_atlas_text_width
-  mu_ctx.text_height = mu.default_atlas_text_height
+  ui_state.mu_ctx.text_width = mu.default_atlas_text_width
+  ui_state.mu_ctx.text_height = mu.default_atlas_text_height
   
   rl.SetTargetFPS(60)
 
@@ -569,8 +573,8 @@ main :: proc() {
 
   board := InitialKhetBoard(board_rect)
 
-  atlas_texture = rl.LoadRenderTexture(c.int(mu.DEFAULT_ATLAS_WIDTH), c.int(mu.DEFAULT_ATLAS_HEIGHT))
-  defer rl.UnloadRenderTexture(atlas_texture)
+  ui_state.atlas_texture = rl.LoadRenderTexture(c.int(mu.DEFAULT_ATLAS_WIDTH), c.int(mu.DEFAULT_ATLAS_HEIGHT))
+  defer rl.UnloadRenderTexture(ui_state.atlas_texture)
 
   image := rl.GenImageColor(c.int(mu.DEFAULT_ATLAS_WIDTH), c.int(mu.DEFAULT_ATLAS_HEIGHT), rl.Color{0, 0, 0, 0})
   defer rl.UnloadImage(image)
@@ -582,12 +586,12 @@ main :: proc() {
     rl.ImageDrawPixel(&image, c.int(x), c.int(y), color)
   }
 
-  rl.BeginTextureMode(atlas_texture)
-  rl.UpdateTexture(atlas_texture.texture, rl.LoadImageColors(image))
+  rl.BeginTextureMode(ui_state.atlas_texture)
+  rl.UpdateTexture(ui_state.atlas_texture.texture, rl.LoadImageColors(image))
   rl.EndTextureMode()
 
-  screen_texture = rl.LoadRenderTexture(WIDTH, HEIGHT)
-  defer rl.UnloadRenderTexture(screen_texture)
+  ui_state.screen_texture = rl.LoadRenderTexture(WIDTH, HEIGHT)
+  defer rl.UnloadRenderTexture(ui_state.screen_texture)
   
   for !rl.WindowShouldClose() {
     elapsed := rl.GetFrameTime()
@@ -606,22 +610,22 @@ main :: proc() {
 
     mouse_pos := rl.GetMousePosition()
     mouse_x, mouse_y := i32(mouse_pos.x), i32(mouse_pos.y)
-    mu.input_mouse_move(&mu_ctx, mouse_x, mouse_y)
+    mu.input_mouse_move(&ui_state.mu_ctx, mouse_x, mouse_y)
 
     for button_rl, button_mu in mouse_buttons_map {
       switch {
       case rl.IsMouseButtonPressed(button_rl):
-        mu.input_mouse_down(&mu_ctx, mouse_x, mouse_y, button_mu)
+        mu.input_mouse_down(&ui_state.mu_ctx, mouse_x, mouse_y, button_mu)
       case rl.IsMouseButtonReleased(button_rl):
-        mu.input_mouse_up(&mu_ctx, mouse_x, mouse_y, button_mu)
+        mu.input_mouse_up(&ui_state.mu_ctx, mouse_x, mouse_y, button_mu)
       }
     }
 
-    mu.begin(&mu_ctx)
-    UpdateUI(&mu_ctx)
-    mu.end(&mu_ctx)
+    mu.begin(&ui_state.mu_ctx)
+    UpdateUI(&ui_state.mu_ctx)
+    mu.end(&ui_state.mu_ctx)
 
-    RenderUI(&mu_ctx)
+    RenderUI(&ui_state.mu_ctx)
 
     rl.EndDrawing()
   }
