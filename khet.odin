@@ -296,13 +296,25 @@ Piece :: struct {
 
 Square :: distinct Maybe(Piece)
 
+MoveType :: enum {
+  UL, U, UR,
+  L,     R,
+  DL, D, DR,
+  CW, ACW
+}
+
+MoveSet :: distinct bit_set[MoveType]
+
 Board :: struct {
   player_to_move: Player,
   squares: [8][10]Square,
 
   rects: [8][10]rl.Rectangle,
-  selected: Maybe([2]int)
+  selected: Maybe([2]int),
+  current_moves: MoveSet
 }
+
+khet_board: Board
 
 UpdatePick :: proc(board: ^Board, click_pos: [2]f32) {
   fmt.println(click_pos)
@@ -452,6 +464,7 @@ InitialKhetBoard :: proc(rect: rl.Rectangle) -> Board {
   }
 
   board.selected = nil
+  board.current_moves = MoveSet{}
 
   return board
 }
@@ -525,23 +538,38 @@ UpdateUI :: proc(ctx: ^mu.Context) {
 
     {
       mu.layout_row_items(ctx, 3, 0)
-      if .SUBMIT in mu.button(ctx, "UL") { write_log("Pressed UL") }
-      if .SUBMIT in mu.button(ctx, "U") { write_log("Pressed U") }
-      if .SUBMIT in mu.button(ctx, "UR") { write_log("Pressed UR") }
+      opts := MoveType.UL in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+
+      if .SUBMIT in mu.button(ctx, "UL", mu.Icon.NONE, opts) { write_log("Pressed UL") }
+
+      opts = MoveType.U in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      if .SUBMIT in mu.button(ctx, "U", mu.Icon.NONE, opts) { write_log("Pressed U") }
+
+      opts = MoveType.UR in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      if .SUBMIT in mu.button(ctx, "UR", mu.Icon.NONE, opts) { write_log("Pressed UR") }
     }
 
     {
       mu.layout_row_items(ctx, 3, 0)
-      if .SUBMIT in mu.button(ctx, "L") { write_log("Pressed L") }
+      opts := MoveType.L in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      if .SUBMIT in mu.button(ctx, "L", mu.Icon.NONE, opts) { write_log("Pressed L") }
+
       mu.label(ctx, "")
-      if .SUBMIT in mu.button(ctx, "R") { write_log("Pressed R") }
+
+      opts = MoveType.R in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      if .SUBMIT in mu.button(ctx, "R", mu.Icon.NONE, opts) { write_log("Pressed R") }
     }
 
     {
       mu.layout_row_items(ctx, 3, 0)
-      if .SUBMIT in mu.button(ctx, "DL") { write_log("Pressed DL") }
-      if .SUBMIT in mu.button(ctx, "D") { write_log("Pressed D") }
-      if .SUBMIT in mu.button(ctx, "DR") { write_log("Pressed DR") }
+      opts := MoveType.DL in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      if .SUBMIT in mu.button(ctx, "DL", mu.Icon.NONE, opts) { write_log("Pressed DL") }
+
+      opts = MoveType.D in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      if .SUBMIT in mu.button(ctx, "D", mu.Icon.NONE, opts) { write_log("Pressed D") }
+
+      opts = MoveType.DR in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      if .SUBMIT in mu.button(ctx, "DR", mu.Icon.NONE, opts) { write_log("Pressed DR") }
     }
 
     {
@@ -551,9 +579,13 @@ UpdateUI :: proc(ctx: ^mu.Context) {
 
     {
       mu.layout_row_items(ctx, 3, 0)
-      if .SUBMIT in mu.button(ctx, "Rotate CW") { write_log("Pressed CW") }
+      opts := MoveType.CW in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      if .SUBMIT in mu.button(ctx, "Rotate CW", mu.Icon.NONE, opts) { write_log("Pressed CW") }
+
       mu.label(ctx, "")
-      if .SUBMIT in mu.button(ctx, "Rotate ACW") { write_log("Pressed ACW") }
+
+      opts = MoveType.ACW in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      if .SUBMIT in mu.button(ctx, "Rotate ACW", mu.Icon.NONE, opts) { write_log("Pressed ACW") }
     }
   }
 }
@@ -571,7 +603,7 @@ main :: proc() {
 
   board_rect := rl.Rectangle{50, 50, WIDTH - 100, HEIGHT - 100}
 
-  board := InitialKhetBoard(board_rect)
+  khet_board = InitialKhetBoard(board_rect)
 
   ui_state.atlas_texture = rl.LoadRenderTexture(c.int(mu.DEFAULT_ATLAS_WIDTH), c.int(mu.DEFAULT_ATLAS_HEIGHT))
   defer rl.UnloadRenderTexture(ui_state.atlas_texture)
@@ -600,10 +632,10 @@ main :: proc() {
     
     rl.ClearBackground(rl.BLACK)
 
-    RenderBoard(board, board_rect)
+    RenderBoard(khet_board, board_rect)
 
     if rl.IsMouseButtonPressed(rl.MouseButton.LEFT) {
-      UpdatePick(&board, rl.GetMousePosition())
+      UpdatePick(&khet_board, rl.GetMousePosition())
     }
 
     free_all(context.temp_allocator)
