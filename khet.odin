@@ -309,7 +309,8 @@ Board :: struct {
   player_to_move: Player,
   squares: [8][10]Square,
 
-  rects: [8][10]rl.Rectangle,
+  board_rect: rl.Rectangle,
+  square_rects: [8][10]rl.Rectangle,
   selected: Maybe([2]int),
   current_moves: MoveSet
 }
@@ -324,22 +325,90 @@ UpdatePick :: proc(board: ^Board, click_pos: [2]f32) {
            y > rect.y && y < rect.y + rect.height
   }
 
-  has_selection := false
+  // If the click is not on the board then do not update the pick.
+  if !hit_test(click_pos[0], click_pos[1], board^.board_rect) {
+    return
+  }
+
+  selection: Maybe([2]int)
   for row in 0..<8 {
     for col in 0..<10 {
       sq := board^.squares[row][col]
       if sq != nil &&
          sq.?.owner == board^.player_to_move &&
-         hit_test(click_pos[0], click_pos[1], board^.rects[row][col]) {
+         hit_test(click_pos[0], click_pos[1], board^.square_rects[row][col]) {
 
-        board^.selected = [2]int { row, col }
-        has_selection = true
+        selection = [2]int{row, col}
       }
     }
   }
 
-  if !has_selection {
+  if selection != nil {
+    board^.selected = selection.?
+
+    // Update the current move set.
+    board^.current_moves = MoveSet{}
+
+    sel_y := selection.?[0]
+    sel_x := selection.?[1]
+
+    sq := board^.squares[sel_y][sel_x].?
+    pt := sq.type
+    if pt != PieceType.SPHINX {
+
+      can_move :: proc(source_pt: PieceType, target_sq: Square) -> bool {
+        if target_sq == nil do return true
+        return source_pt == PieceType.SCARAB && target_sq.?.type != PieceType.SCARAB
+      }
+
+      if sel_x > 0 && can_move(pt, board^.squares[sel_y][sel_x - 1]) {
+        board^.current_moves += {MoveType.L}
+      }
+      if sel_x < 9 && can_move(pt, board^.squares[sel_y][sel_x + 1]) {
+        board^.current_moves += {MoveType.R}
+      }
+      if sel_y > 0 && can_move(pt, board^.squares[sel_y - 1][sel_x]) {
+        board^.current_moves += {MoveType.U}
+      }
+      if sel_y < 7 && can_move(pt, board^.squares[sel_y + 1][sel_x]) {
+        board^.current_moves += {MoveType.D}
+      }
+      if sel_x > 0 && sel_y > 0 && can_move(pt, board^.squares[sel_y - 1][sel_x - 1]) {
+        board^.current_moves += {MoveType.UL}
+      }
+      if sel_x > 0 && sel_y < 7 && can_move(pt, board^.squares[sel_y + 1][sel_x - 1]) {
+        board^.current_moves += {MoveType.DL}
+      }
+      if sel_x < 9 && sel_y > 0 && can_move(pt, board^.squares[sel_y - 1][sel_x + 1]) {
+        board^.current_moves += {MoveType.UR}
+      }
+      if sel_x < 9 && sel_y < 7 && can_move(pt, board^.squares[sel_y + 1][sel_x + 1]) {
+        board^.current_moves += {MoveType.DR}
+      }
+
+      // Check for rotations, avoiding duplicates due to symmetry.
+      if pt == PieceType.SCARAB {
+        board^.current_moves += {MoveType.CW}
+      }
+      else if pt != PieceType.PHARAOH {
+        board^.current_moves += {MoveType.CW}
+        board^.current_moves += {MoveType.ACW}
+      }
+    }
+    else {
+      // One rotation is available, just hardcode the cases.
+      if sq.owner == Player.SILVER {
+        board^.current_moves += {sq.rotation == 0 ? MoveType.ACW : MoveType.CW}
+      }
+      else {
+        board^.current_moves += {sq.rotation == 2 ? MoveType.ACW : MoveType.CW}
+      }
+    }
+  }
+
+  if selection == nil {
     board^.selected = nil
+    board^.current_moves = MoveSet{}
   }
 }
 
@@ -354,7 +423,7 @@ RenderBoard :: proc(board: Board, rect: rl.Rectangle) {
     for col in 0..<10 {
       sq := board.squares[row][col]
       if sq != nil {
-        r := board.rects[row][col]
+        r := board.square_rects[row][col]
         pt := sq.?.type
 
         switch pt {
@@ -389,7 +458,7 @@ RenderBoard :: proc(board: Board, rect: rl.Rectangle) {
   pick_maybe := board.selected
   if pick_maybe != nil {
     pick: [2]int = pick_maybe.?
-    rect := board.rects[pick[0]][pick[1]]
+    rect := board.square_rects[pick[0]][pick[1]]
     rl.DrawRectangleLinesEx(rect, 4, rl.BLUE)
   }
 }
@@ -455,7 +524,7 @@ InitialKhetBoard :: proc(rect: rl.Rectangle) -> Board {
     for col in 0..<10 {
       col_offset := side * col
 
-      board.rects[row][col] = rl.Rectangle{
+      board.square_rects[row][col] = rl.Rectangle{
           x = rect.x + cast(f32)col_offset,
           y = rect.y + cast(f32)row_offset,
           width = cast(f32)side,
@@ -463,6 +532,8 @@ InitialKhetBoard :: proc(rect: rl.Rectangle) -> Board {
     }
   }
 
+  board.board_rect =
+    rl.Rectangle{x = rect.x, y = rect.y, width = 10 * cast(f32)side, height = 8 * cast(f32)side}
   board.selected = nil
   board.current_moves = MoveSet{}
 
@@ -535,40 +606,41 @@ UpdateUI :: proc(ctx: ^mu.Context) {
   @static opts := mu.Options{.NO_CLOSE}
 
   if mu.window(ctx, "Controls", {0, 0, 300, 450}, opts) {
+    no_interact_opts := mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT, mu.Opt.NO_FRAME}
 
     {
       mu.layout_row_items(ctx, 3, 0)
-      opts := MoveType.UL in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      opts := MoveType.UL in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : no_interact_opts
 
       if .SUBMIT in mu.button(ctx, "UL", mu.Icon.NONE, opts) { write_log("Pressed UL") }
 
-      opts = MoveType.U in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      opts = MoveType.U in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : no_interact_opts
       if .SUBMIT in mu.button(ctx, "U", mu.Icon.NONE, opts) { write_log("Pressed U") }
 
-      opts = MoveType.UR in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      opts = MoveType.UR in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : no_interact_opts
       if .SUBMIT in mu.button(ctx, "UR", mu.Icon.NONE, opts) { write_log("Pressed UR") }
     }
 
     {
       mu.layout_row_items(ctx, 3, 0)
-      opts := MoveType.L in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      opts := MoveType.L in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : no_interact_opts
       if .SUBMIT in mu.button(ctx, "L", mu.Icon.NONE, opts) { write_log("Pressed L") }
 
       mu.label(ctx, "")
 
-      opts = MoveType.R in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      opts = MoveType.R in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : no_interact_opts
       if .SUBMIT in mu.button(ctx, "R", mu.Icon.NONE, opts) { write_log("Pressed R") }
     }
 
     {
       mu.layout_row_items(ctx, 3, 0)
-      opts := MoveType.DL in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      opts := MoveType.DL in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : no_interact_opts
       if .SUBMIT in mu.button(ctx, "DL", mu.Icon.NONE, opts) { write_log("Pressed DL") }
 
-      opts = MoveType.D in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      opts = MoveType.D in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : no_interact_opts
       if .SUBMIT in mu.button(ctx, "D", mu.Icon.NONE, opts) { write_log("Pressed D") }
 
-      opts = MoveType.DR in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      opts = MoveType.DR in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : no_interact_opts
       if .SUBMIT in mu.button(ctx, "DR", mu.Icon.NONE, opts) { write_log("Pressed DR") }
     }
 
@@ -579,12 +651,12 @@ UpdateUI :: proc(ctx: ^mu.Context) {
 
     {
       mu.layout_row_items(ctx, 3, 0)
-      opts := MoveType.CW in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      opts := MoveType.CW in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : no_interact_opts
       if .SUBMIT in mu.button(ctx, "Rotate CW", mu.Icon.NONE, opts) { write_log("Pressed CW") }
 
       mu.label(ctx, "")
 
-      opts = MoveType.ACW in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : mu.Options{mu.Opt.ALIGN_CENTER, mu.Opt.NO_INTERACT}
+      opts = MoveType.ACW in khet_board.current_moves ? mu.Options{mu.Opt.ALIGN_CENTER} : no_interact_opts
       if .SUBMIT in mu.button(ctx, "Rotate ACW", mu.Icon.NONE, opts) { write_log("Pressed ACW") }
     }
   }
