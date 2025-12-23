@@ -662,9 +662,9 @@ write_log :: proc(s: string) {
 }
 
 UpdateUI :: proc(ctx: ^mu.Context) {
-  @static opts := mu.Options{.NO_CLOSE}
+  @static opts := mu.Options{.NO_INTERACT, .NO_RESIZE, .NO_CLOSE}
 
-  if mu.window(ctx, "Controls", {0, 0, 300, 450}, opts) {
+  if mu.window(ctx, "Controls", {WIDTH - 300, 0, 300, HEIGHT}, opts) {
     {
       mu.layout_row_items(ctx, 3, 0)
 
