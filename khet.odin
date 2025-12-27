@@ -469,6 +469,7 @@ MakeMove :: proc(type: MoveType) {
 
   khet_board.selected = nil
   khet_board.current_moves = {}
+  khet_board.player_to_move = khet_board.player_to_move == .RED ? .SILVER : .RED
 }
 
 RenderBoard :: proc(board: Board, rect: rl.Rectangle) {
