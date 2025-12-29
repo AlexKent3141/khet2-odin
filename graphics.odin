@@ -1,6 +1,7 @@
 package main
 
 import "core:math"
+import "core:container/small_array"
 
 import rl "vendor:raylib"
 
@@ -240,7 +241,7 @@ DrawSphinx :: proc(rect: rl.Rectangle, p: Piece) {
   rl.DrawRectangleLinesEx(rect, 4, BORDER_COLOR)
 }
 
-RenderBoard :: proc(board: Board, rect: rl.Rectangle) {
+RenderBoard :: proc(board: ^Board, rect: rl.Rectangle) {
   // Figure out the size of each square.
   side := cast(int)math.min(rect.width / 10, rect.height / 8)
 
@@ -280,6 +281,29 @@ RenderBoard :: proc(board: Board, rect: rl.Rectangle) {
       cast(i32)rect.x + cast(i32)col_offset, cast(i32)rect.y,
       cast(i32)rect.x + cast(i32)col_offset, cast(i32)rect.y + 8 * cast(i32)side,
       rl.GREEN)
+  }
+
+  // Draw the laser.
+  if board.num_laser_frames < 120 && small_array.len(board.laser_path) > 0 {
+    rect_centre :: proc(r: rl.Rectangle) -> [2]f32 {
+      centre_x := r.x + r.width / 2
+      centre_y := r.y + r.height / 2
+      return {centre_x, centre_y}
+    }
+
+    prev := small_array.get(board.laser_path, 0)
+    for next in small_array.slice(&board.laser_path)[1:] {
+      prev_centre := rect_centre(board.square_rects[prev[0]][prev[1]])
+      next_centre := rect_centre(board.square_rects[next[0]][next[1]])
+
+      rl.DrawLineEx(
+        {prev_centre[0], prev_centre[1]},
+        {next_centre[0], next_centre[1]},
+        5,
+        rl.RED)
+
+      prev = next
+    }
   }
 
   // Draw the move pick.

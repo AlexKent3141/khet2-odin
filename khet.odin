@@ -6,6 +6,7 @@ import "core:math"
 import "core:time"
 import "core:strings"
 import "core:unicode"
+import "core:container/small_array"
 
 import rl "vendor:raylib"
 import mu "vendor:microui"
@@ -21,6 +22,8 @@ ui_state := struct {
 
 WIDTH  :: 1280
 HEIGHT :: 800
+FPS :: 60
+LASER_FRAMES :: 2 * FPS
 
 BORDER_COLOR :: rl.Color { 108, 122, 137, 255 }
 
@@ -68,14 +71,35 @@ MoveType :: enum {
 
 MoveSet :: distinct bit_set[MoveType]
 
+KHET_BOARD_WIDTH :: 10
+KHET_BOARD_HEIGHT :: 8
+
+Laser_Path :: distinct small_array.Small_Array(100, [2]int)
+
 Board :: struct {
   player_to_move: Player,
-  squares: [8][10]Square,
+  squares: [KHET_BOARD_HEIGHT][KHET_BOARD_WIDTH]Square,
 
   board_rect: rl.Rectangle,
   square_rects: [8][10]rl.Rectangle,
   selected: Maybe([2]int),
-  current_moves: MoveSet
+  current_moves: MoveSet,
+
+  laser_path: Laser_Path,
+  num_laser_frames: int,
+  pending_dead_piece_loc: Maybe([2]int)
+}
+
+laser_in_progress :: proc(board: Board) -> bool {
+  return small_array.len(board.laser_path) > 0 && board.num_laser_frames < LASER_FRAMES
+}
+
+remove_pending_dead_piece :: proc(board: ^Board) {
+  if board^.pending_dead_piece_loc != nil {
+    y := board^.pending_dead_piece_loc.?[0]
+    x := board^.pending_dead_piece_loc.?[1]
+    board^.squares[y][x] = nil
+  }
 }
 
 khet_board: Board
@@ -227,6 +251,21 @@ MakeMove :: proc(type: MoveType) {
     }
   }
 
+  // Calculate the laser path.
+  loc := khet_board.player_to_move == .RED ? [2]int {0, 0} : [2]int {7, 9}
+  sphinx := khet_board.squares[loc[0]][loc[1]]
+  assert(sphinx != nil)
+  direction := Direction.NONE
+  if sphinx.?.rotation == 0 do direction = Direction.UP
+  else if sphinx.?.rotation == 1 do direction = Direction.RIGHT
+  else if sphinx.?.rotation == 2 do direction = Direction.DOWN
+  else if sphinx.?.rotation == 3 do direction = Direction.LEFT
+
+  khet_board.laser_path, khet_board.pending_dead_piece_loc =
+    find_laser_path(loc, direction, khet_board.squares)
+  khet_board.num_laser_frames = 0
+
+  // Move to the next player.
   khet_board.selected = nil
   khet_board.current_moves = {}
   khet_board.player_to_move = khet_board.player_to_move == .RED ? .SILVER : .RED
@@ -447,7 +486,7 @@ main :: proc() {
   ui_state.mu_ctx.text_width = mu.default_atlas_text_width
   ui_state.mu_ctx.text_height = mu.default_atlas_text_height
   
-  rl.SetTargetFPS(60)
+  rl.SetTargetFPS(FPS)
 
   board_rect := rl.Rectangle{50, 50, WIDTH - 100, HEIGHT - 100}
 
@@ -474,15 +513,21 @@ main :: proc() {
   defer rl.UnloadRenderTexture(ui_state.screen_texture)
   
   for !rl.WindowShouldClose() {
+
+    khet_board.num_laser_frames += 1
+    if khet_board.num_laser_frames == LASER_FRAMES {
+      remove_pending_dead_piece(&khet_board)
+    }
+
     elapsed := rl.GetFrameTime()
     
     rl.BeginDrawing()
     
     rl.ClearBackground(rl.BLACK)
 
-    RenderBoard(khet_board, board_rect)
+    RenderBoard(&khet_board, board_rect)
 
-    if rl.IsMouseButtonPressed(rl.MouseButton.LEFT) {
+    if rl.IsMouseButtonPressed(rl.MouseButton.LEFT) && !laser_in_progress(khet_board) {
       UpdatePick(&khet_board, rl.GetMousePosition())
     }
 
