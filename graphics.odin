@@ -245,8 +245,6 @@ RenderBoard :: proc(board: ^Board, rect: rl.Rectangle) {
   // Figure out the size of each square.
   side := cast(int)math.min(rect.width / 10, rect.height / 8)
 
-  rl.DrawRectangle(cast(i32)rect.x, cast(i32)rect.y, cast(i32)rect.width, cast(i32)rect.height, rl.BLACK)
-
   // Draw the pieces.
   for row in 0..<8 {
     for col in 0..<10 {

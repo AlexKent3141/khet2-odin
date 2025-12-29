@@ -409,51 +409,43 @@ RenderUI :: proc(ctx: ^mu.Context) {
 UpdateUI :: proc(ctx: ^mu.Context) {
   @static opts := mu.Options{.NO_INTERACT, .NO_RESIZE, .NO_CLOSE}
 
+  show_button :: proc(ctx: ^mu.Context, move_type: MoveType, moves: MoveSet) {
+    if move_type in moves {
+      caption, _ := fmt.enum_value_to_string(move_type)
+      if .SUBMIT in mu.button(ctx, caption) {
+        MakeMove(move_type)
+      }
+    }
+    else {
+      mu.label(ctx, "")
+    }
+  }
+
   if mu.window(ctx, "Controls", {WIDTH - 300, 0, 300, HEIGHT}, opts) {
     {
       mu.layout_row_items(ctx, 3, 0)
 
-      if .SUBMIT in mu.button(ctx, "UL") && MoveType.UL in khet_board.current_moves {
-        MakeMove(.UL)
-      }
-
-      if .SUBMIT in mu.button(ctx, "U") && MoveType.U in khet_board.current_moves {
-        MakeMove(.U)
-      }
-
-      if .SUBMIT in mu.button(ctx, "UR") && MoveType.UR in khet_board.current_moves {
-        MakeMove(.UR)
-      }
+      show_button(ctx, MoveType.UL, khet_board.current_moves)
+      show_button(ctx, MoveType.U, khet_board.current_moves)
+      show_button(ctx, MoveType.UR, khet_board.current_moves)
     }
 
     {
       mu.layout_row_items(ctx, 3, 0)
 
-      if .SUBMIT in mu.button(ctx, "L") && MoveType.L in khet_board.current_moves {
-        MakeMove(.L)
-      }
+      show_button(ctx, MoveType.L, khet_board.current_moves)
 
       mu.label(ctx, "")
 
-      if .SUBMIT in mu.button(ctx, "R") && MoveType.R in khet_board.current_moves {
-        MakeMove(.R)
-      }
+      show_button(ctx, MoveType.R, khet_board.current_moves)
     }
 
     {
       mu.layout_row_items(ctx, 3, 0)
 
-      if .SUBMIT in mu.button(ctx, "DL") && MoveType.DL in khet_board.current_moves {
-        MakeMove(.DL)
-      }
-
-      if .SUBMIT in mu.button(ctx, "D") && MoveType.D in khet_board.current_moves {
-        MakeMove(.D)
-      }
-
-      if .SUBMIT in mu.button(ctx, "DR") && MoveType.DR in khet_board.current_moves {
-        MakeMove(.DR)
-      }
+      show_button(ctx, MoveType.DL, khet_board.current_moves)
+      show_button(ctx, MoveType.D, khet_board.current_moves)
+      show_button(ctx, MoveType.DR, khet_board.current_moves)
     }
 
     {
@@ -464,15 +456,11 @@ UpdateUI :: proc(ctx: ^mu.Context) {
     {
       mu.layout_row_items(ctx, 3, 0)
 
-      if .SUBMIT in mu.button(ctx, "Rotate CW") && MoveType.CW in khet_board.current_moves {
-        MakeMove(.CW)
-      }
+      show_button(ctx, MoveType.CW, khet_board.current_moves)
 
       mu.label(ctx, "")
 
-      if .SUBMIT in mu.button(ctx, "Rotate ACW") && MoveType.ACW in khet_board.current_moves {
-        MakeMove(.ACW)
-      }
+      show_button(ctx, MoveType.ACW, khet_board.current_moves)
     }
   }
 }
@@ -525,14 +513,6 @@ main :: proc() {
     
     rl.ClearBackground(rl.BLACK)
 
-    RenderBoard(&khet_board, board_rect)
-
-    if rl.IsMouseButtonPressed(rl.MouseButton.LEFT) && !laser_in_progress(khet_board) {
-      UpdatePick(&khet_board, rl.GetMousePosition())
-    }
-
-    free_all(context.temp_allocator)
-
     mouse_pos := rl.GetMousePosition()
     mouse_x, mouse_y := i32(mouse_pos.x), i32(mouse_pos.y)
     mu.input_mouse_move(&ui_state.mu_ctx, mouse_x, mouse_y)
@@ -551,6 +531,14 @@ main :: proc() {
     mu.end(&ui_state.mu_ctx)
 
     RenderUI(&ui_state.mu_ctx)
+
+    RenderBoard(&khet_board, board_rect)
+
+    if rl.IsMouseButtonPressed(rl.MouseButton.LEFT) && !laser_in_progress(khet_board) {
+      UpdatePick(&khet_board, rl.GetMousePosition())
+    }
+
+    free_all(context.temp_allocator)
 
     rl.EndDrawing()
   }
