@@ -15,7 +15,8 @@ ui_state := struct {
     mu_ctx: mu.Context,
     atlas_texture: rl.RenderTexture2D,
     screen_texture: rl.RenderTexture2D,
-    bg: rl.Color
+    bg: rl.Color,
+    winner: Maybe(Player)
 }{
     bg = rl.Color{0, 0, 0, 0}
 }
@@ -488,6 +489,14 @@ UpdateUI :: proc(ctx: ^mu.Context) {
       show_button(ctx, MoveType.ACW, khet_board.current_moves)
     }
   }
+
+  if ui_state.winner != nil {
+    if mu.window(ctx, "Game Over", {WIDTH / 2 - 100, HEIGHT / 2 - 50, 200, 100}, opts) {
+      mu.layout_row(ctx, { 200 }, 0)
+      if ui_state.winner.? == .RED do mu.label(ctx, "Player RED wins!")
+      else do mu.label(ctx, "Player SILVER wins!")
+    }
+  }
 }
 
 main :: proc() {
@@ -529,6 +538,17 @@ main :: proc() {
 
     khet_board.num_laser_frames += 1
     if khet_board.num_laser_frames == LASER_FRAMES {
+      // Is the game over?
+      if khet_board.pending_dead_piece_loc != nil {
+        y := khet_board.pending_dead_piece_loc.?[0]
+        x := khet_board.pending_dead_piece_loc.?[1]
+
+        killed_piece := khet_board.squares[y][x].piece
+        if killed_piece != nil && killed_piece.?.type == .PHARAOH {
+          ui_state.winner = killed_piece.?.owner == .RED ? .SILVER : .RED
+        }
+      }
+
       remove_pending_dead_piece(&khet_board)
     }
 
@@ -555,12 +575,13 @@ main :: proc() {
     UpdateUI(&ui_state.mu_ctx)
     mu.end(&ui_state.mu_ctx)
 
+    RenderBoard(&khet_board, board_rect)
     RenderUI(&ui_state.mu_ctx)
 
-    RenderBoard(&khet_board, board_rect)
-
-    if rl.IsMouseButtonPressed(rl.MouseButton.LEFT) && !laser_in_progress(khet_board) {
-      UpdatePick(&khet_board, rl.GetMousePosition())
+    if ui_state.winner == nil {
+      if rl.IsMouseButtonPressed(rl.MouseButton.LEFT) && !laser_in_progress(khet_board) {
+        UpdatePick(&khet_board, rl.GetMousePosition())
+      }
     }
 
     free_all(context.temp_allocator)
