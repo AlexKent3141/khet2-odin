@@ -60,7 +60,10 @@ Piece :: struct {
   rotation: int
 }
 
-Square :: distinct Maybe(Piece)
+Square :: struct {
+  piece: Maybe(Piece),
+  owner: Maybe(Player)
+}
 
 MoveType :: enum {
   UL, U, UR,
@@ -98,7 +101,7 @@ remove_pending_dead_piece :: proc(board: ^Board) {
   if board^.pending_dead_piece_loc != nil {
     y := board^.pending_dead_piece_loc.?[0]
     x := board^.pending_dead_piece_loc.?[1]
-    board^.squares[y][x] = nil
+    board^.squares[y][x].piece = nil
   }
 }
 
@@ -120,8 +123,8 @@ UpdatePick :: proc(board: ^Board, click_pos: [2]f32) {
   for row in 0..<8 {
     for col in 0..<10 {
       sq := board^.squares[row][col]
-      if sq != nil &&
-         sq.?.owner == board^.player_to_move &&
+      if sq.piece != nil &&
+         sq.piece.?.owner == board^.player_to_move &&
          hit_test(click_pos[0], click_pos[1], board^.square_rects[row][col]) {
 
         selection = [2]int{row, col}
@@ -138,37 +141,46 @@ UpdatePick :: proc(board: ^Board, click_pos: [2]f32) {
     sel_y := selection.?[0]
     sel_x := selection.?[1]
 
-    sq := board^.squares[sel_y][sel_x].?
-    pt := sq.type
+    piece := board^.squares[sel_y][sel_x].piece
+    pt := piece.?.type
     if pt != PieceType.SPHINX {
 
-      can_move :: proc(source_pt: PieceType, target_sq: Square) -> bool {
-        if target_sq == nil do return true
-        return source_pt == PieceType.SCARAB && target_sq.?.type != PieceType.SCARAB
+      can_move :: proc(source_piece: Piece, target_sq: Square) -> bool {
+        target_piece := target_sq.piece
+        if target_sq.owner != nil && source_piece.owner != target_sq.owner.? {
+          return false
+        }
+        if target_piece == nil do return true
+        return source_piece.type == PieceType.SCARAB &&
+               target_piece.?.type != PieceType.SCARAB
       }
 
-      if sel_x > 0 && can_move(pt, board^.squares[sel_y][sel_x - 1]) {
+      if sel_x > 0 && can_move(piece.?, board^.squares[sel_y][sel_x - 1]) {
         board^.current_moves += {MoveType.L}
       }
-      if sel_x < 9 && can_move(pt, board^.squares[sel_y][sel_x + 1]) {
+      if sel_x < 9 && can_move(piece.?, board^.squares[sel_y][sel_x + 1]) {
         board^.current_moves += {MoveType.R}
       }
-      if sel_y > 0 && can_move(pt, board^.squares[sel_y - 1][sel_x]) {
+      if sel_y > 0 && can_move(piece.?, board^.squares[sel_y - 1][sel_x]) {
         board^.current_moves += {MoveType.U}
       }
-      if sel_y < 7 && can_move(pt, board^.squares[sel_y + 1][sel_x]) {
+      if sel_y < 7 && can_move(piece.?, board^.squares[sel_y + 1][sel_x]) {
         board^.current_moves += {MoveType.D}
       }
-      if sel_x > 0 && sel_y > 0 && can_move(pt, board^.squares[sel_y - 1][sel_x - 1]) {
+      if sel_x > 0 && sel_y > 0 &&
+         can_move(piece.?, board^.squares[sel_y - 1][sel_x - 1]) {
         board^.current_moves += {MoveType.UL}
       }
-      if sel_x > 0 && sel_y < 7 && can_move(pt, board^.squares[sel_y + 1][sel_x - 1]) {
+      if sel_x > 0 && sel_y < 7 &&
+         can_move(piece.?, board^.squares[sel_y + 1][sel_x - 1]) {
         board^.current_moves += {MoveType.DL}
       }
-      if sel_x < 9 && sel_y > 0 && can_move(pt, board^.squares[sel_y - 1][sel_x + 1]) {
+      if sel_x < 9 && sel_y > 0 &&
+         can_move(piece.?, board^.squares[sel_y - 1][sel_x + 1]) {
         board^.current_moves += {MoveType.UR}
       }
-      if sel_x < 9 && sel_y < 7 && can_move(pt, board^.squares[sel_y + 1][sel_x + 1]) {
+      if sel_x < 9 && sel_y < 7 &&
+         can_move(piece.?, board^.squares[sel_y + 1][sel_x + 1]) {
         board^.current_moves += {MoveType.DR}
       }
 
@@ -183,11 +195,11 @@ UpdatePick :: proc(board: ^Board, click_pos: [2]f32) {
     }
     else {
       // One rotation is available, just hardcode the cases.
-      if sq.owner == Player.SILVER {
-        board^.current_moves += {sq.rotation == 0 ? MoveType.ACW : MoveType.CW}
+      if piece.?.owner == Player.SILVER {
+        board^.current_moves += {piece.?.rotation == 0 ? MoveType.ACW : MoveType.CW}
       }
       else {
-        board^.current_moves += {sq.rotation == 2 ? MoveType.ACW : MoveType.CW}
+        board^.current_moves += {piece.?.rotation == 2 ? MoveType.ACW : MoveType.CW}
       }
     }
   }
@@ -204,14 +216,15 @@ MakeMove :: proc(type: MoveType) {
   y := khet_board.selected.?[0]
 
   // Deal with rotations first.
-  sq := &khet_board.squares[y][x].?
+  sq := &khet_board.squares[y][x]
+  piece := &khet_board.squares[y][x].piece.?
   #partial switch type {
     case .CW:
-      sq^.rotation += 1
-      sq^.rotation %= 4
+      piece^.rotation += 1
+      piece^.rotation %= 4
     case .ACW:
-      sq^.rotation -= 1
-      if sq^.rotation < 0 do sq^.rotation += 4
+      piece^.rotation -= 1
+      if piece^.rotation < 0 do piece^.rotation += 4
   }
 
   // Swap the squares for the current selected piece and the targeted piece.
@@ -240,20 +253,20 @@ MakeMove :: proc(type: MoveType) {
   if target_x != x || target_y != y {
     target_sq := &khet_board.squares[target_y][target_x]
 
-    if target_sq^ == nil {
-      target_sq^ = sq^
-      khet_board.squares[y][x] = nil
+    if target_sq^.piece == nil {
+      target_sq^.piece = sq^.piece
+      khet_board.squares[y][x].piece = nil
     }
     else {
-      tmp := sq^
-      sq^ = target_sq^.?
-      target_sq^ = tmp
+      tmp := sq^.piece
+      sq^.piece = target_sq^.piece
+      target_sq^.piece = tmp
     }
   }
 
   // Calculate the laser path.
   loc := khet_board.player_to_move == .RED ? [2]int {0, 0} : [2]int {7, 9}
-  sphinx := khet_board.squares[loc[0]][loc[1]]
+  sphinx := khet_board.squares[loc[0]][loc[1]].piece
   assert(sphinx != nil)
   direction := Direction.NONE
   if sphinx.?.rotation == 0 do direction = Direction.UP
@@ -313,7 +326,7 @@ InitialKhetBoard :: proc(rect: rl.Rectangle) -> Board {
           orientation = cast(int)line[i] - 1 - '0'
         }
 
-        board.squares[row_index][col_index] = Piece{piece_type.?, player, orientation}
+        board.squares[row_index][col_index].piece = Piece{piece_type.?, player, orientation}
         col_index += 1
       }
       else {
@@ -323,6 +336,18 @@ InitialKhetBoard :: proc(rect: rl.Rectangle) -> Board {
       i += 1
     }
   }
+
+  // Set the ownership of special "owned" squares.
+  for r in 0..<KHET_BOARD_HEIGHT {
+    board.squares[r][0].owner = Player.RED
+    board.squares[r][KHET_BOARD_WIDTH - 1].owner = Player.SILVER
+  }
+
+  board.squares[0][1].owner = Player.SILVER
+  board.squares[KHET_BOARD_HEIGHT - 1][1].owner = Player.SILVER
+
+  board.squares[0][KHET_BOARD_WIDTH - 2].owner = Player.RED
+  board.squares[KHET_BOARD_HEIGHT - 1][KHET_BOARD_WIDTH - 2].owner = Player.RED
 
   // Figure out the size of each square.
   side := cast(int)math.min(rect.width / 10, rect.height / 8)

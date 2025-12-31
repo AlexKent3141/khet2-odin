@@ -194,10 +194,9 @@ find_laser_path :: proc(
     small_array.push_back(&path, loc)
 
     // Deal with reflections etc.
-    sq := squares[loc[0]][loc[1]]
-    if sq != nil {
-      piece := sq.?
-      entry := reflections[direction][piece.type][piece.rotation]
+    piece := squares[loc[0]][loc[1]].piece
+    if piece != nil {
+      entry := reflections[direction][piece.?.type][piece.?.rotation]
 
       if entry.type == Hit_Type.REFLECTED {
         direction = entry.reflected_direction

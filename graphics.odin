@@ -241,24 +241,48 @@ DrawSphinx :: proc(rect: rl.Rectangle, p: Piece) {
   rl.DrawRectangleLinesEx(rect, 4, BORDER_COLOR)
 }
 
+DrawOwner :: proc(rect: rl.Rectangle, owner: Player) {
+  // Corners
+  tl, bl, br, tr := Corners(rect)
+
+  // Centre
+  c := (tl + bl + br + tr) / 4
+
+  col := owner == Player.RED ? DARK_RED : DARK_SILVER
+
+  rl.DrawCircle(cast(i32)c[0], cast(i32)c[1], 0.25 * DiagLength(rect), col)
+  rl.DrawCircle(cast(i32)c[0], cast(i32)c[1], 0.2 * DiagLength(rect), rl.BLACK)
+}
+
 RenderBoard :: proc(board: ^Board, rect: rl.Rectangle) {
   // Figure out the size of each square.
   side := cast(int)math.min(rect.width / 10, rect.height / 8)
 
-  // Draw the pieces.
+  // Draw the square ownership identifiers.
   for row in 0..<8 {
     for col in 0..<10 {
       sq := board.squares[row][col]
-      if sq != nil {
+      if sq.owner != nil {
         r := board.square_rects[row][col]
-        pt := sq.?.type
+        DrawOwner(r, sq.owner.?)
+      }
+    }
+  }
+
+  // Draw the pieces.
+  for row in 0..<8 {
+    for col in 0..<10 {
+      piece := board.squares[row][col].piece
+      if piece != nil {
+        r := board.square_rects[row][col]
+        pt := piece.?.type
 
         switch pt {
-          case .PYRAMID: DrawPyramid(r, sq.?)
-          case .ANUBIS: DrawAnubis(r, sq.?)
-          case .SCARAB: DrawScarab(r, sq.?)
-          case .PHARAOH: DrawPharaoh(r, sq.?)
-          case .SPHINX: DrawSphinx(r, sq.?)
+          case .PYRAMID: DrawPyramid(r, piece.?)
+          case .ANUBIS: DrawAnubis(r, piece.?)
+          case .SCARAB: DrawScarab(r, piece.?)
+          case .PHARAOH: DrawPharaoh(r, piece.?)
+          case .SPHINX: DrawSphinx(r, piece.?)
         }
       }
     }
